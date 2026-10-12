@@ -1,0 +1,132 @@
+# Prometheus Alert Rules for Accrua
+
+groups:
+  - name: accrua_application_alerts
+    interval: 30s
+    rules:
+      # High error rate in event processing
+      - alert: HighEventProcessingErrorRate
+        expr: |
+          rate(accrua_events_processed_total{status="error"}[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          component: metering
+        annotations:
+          summary: "High event processing error rate detected"
+          description: "Error rate is {{ $value | humanize }} errors/sec for {{ $labels.instance }}"
+
+      # Event processing latency too high
+      - alert: HighEventProcessingLatency
+        expr: |
+          histogram_quantile(0.99,
+            rate(accrua_events_processing_duration_bucket[5m])
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: metering
+        annotations:
+          summary: "High event processing latency"
+          description: "P99 latency is {{ $value | humanize }}s for {{ $labels.instance }}"
+
+      # Application down
+      - alert: AccruaApplicationDown
+        expr: up{job="accrua-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: application
+        annotations:
+          summary: "Accrua application is down"
+          description: "Instance {{ $labels.instance }} has been down for more than 2 minutes"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          component: jvm
+        annotations:
+          summary: "High JVM heap memory usage"
+          description: "Heap memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      # Database connection pool near exhaustion
+      - alert: DatabaseConnectionPoolNearExhaustion
+        expr: |
+          (hikaricp_connections_active / hikaricp_connections_max) > 0.8
+        for: 5m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "{{ $value | humanizePercentage }} of connections in use on {{ $labels.instance }}"
+
+  - name: accrua_kafka_alerts
+    interval: 30s
+    rules:
+      # High Kafka consumer lag
+      - alert: HighKafkaConsumerLag
+        expr: |
+          kafka_consumer_lag > 10000
+        for: 10m
+        labels:
+          severity: warning
+          component: kafka
+        annotations:
+          summary: "High Kafka consumer lag detected"
+          description: "Consumer lag is {{ $value }} messages for group {{ $labels.group }}"
+
+      # Kafka consumer not consuming
+      - alert: KafkaConsumerNotConsuming
+        expr: |
+          rate(kafka_consumer_records_consumed_total[5m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+          component: kafka
+        annotations:
+          summary: "Kafka consumer not consuming messages"
+          description: "No messages consumed in the last 10 minutes for group {{ $labels.group }}"
+
+  - name: accrua_business_alerts
+    interval: 1m
+    rules:
+      # Unusually high event volume
+      - alert: UnusuallyHighEventVolume
+        expr: |
+          rate(accrua_events_processed_total[5m]) > 1000
+        for: 15m
+        labels:
+          severity: info
+          component: business
+        annotations:
+          summary: "Unusually high event volume detected"
+          description: "Processing {{ $value | humanize }} events/sec, which is above normal"
+
+      # No events received
+      - alert: NoEventsReceived
+        expr: |
+          rate(accrua_events_processed_total[15m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "No events received"
+          description: "No usage events have been received in the last 30 minutes"
+
+      # High allocation depletion rate
+      - alert: HighAllocationDepletionRate
+        expr: |
+          rate(accrua_allocations_total{status="depleted"}[1h]) > 10
+        for: 1h
+        labels:
+          severity: info
+          component: business
+        annotations:
+          summary: "High allocation depletion rate"
+          description: "{{ $value | humanize }} allocations depleted per hour"
